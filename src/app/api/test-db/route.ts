@@ -3,21 +3,19 @@ import { NextResponse } from "next/server";
 
 export async function GET() {
   try {
-    const users = await prisma.user.count();
+    await prisma.$queryRaw`SELECT 1`;
 
     return NextResponse.json({
       success: true,
-      users,
     });
-  } catch (error) {
-    console.error(error);
+  } catch {
+    console.error("Database health check failed");
 
     return NextResponse.json(
       {
         success: false,
-        message: "Database connection failed",
       },
-      { status: 500 }
+      { status: 503 }
     );
   }
 }
