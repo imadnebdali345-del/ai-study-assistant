@@ -97,7 +97,7 @@ export async function POST(req: Request) {
   let verifiedEvent: unknown;
 
   try {
-    verifiedEvent = new Webhook(secret).verify(body, {
+    new Webhook(secret).verify(body, {
       "svix-id": svixId,
       "svix-timestamp": svixTimestamp,
       "svix-signature": svixSignature,
@@ -106,6 +106,15 @@ export async function POST(req: Request) {
     console.warn("Clerk webhook signature verification failed");
     return NextResponse.json(
       { error: "Invalid webhook signature" },
+      { status: 400 }
+    );
+  }
+
+  try {
+    verifiedEvent = JSON.parse(body);
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid webhook JSON" },
       { status: 400 }
     );
   }
