@@ -72,6 +72,33 @@ function isUniqueConstraintError(error: unknown): boolean {
   return isRecord(error) && error.code === "P2002";
 }
 
+function getSafeErrorDetails(error: unknown) {
+  const rawName = error instanceof Error ? error.name : "UnknownError";
+  const rawCode =
+    isRecord(error) && typeof error.code === "string" ? error.code : undefined;
+  const rawMessage =
+    error instanceof Error ? error.message : "Non-Error value thrown";
+
+  const message = rawMessage
+    .replace(/\b(?:postgres(?:ql)?|https?):\/\/\S+/gi, "[redacted-url]")
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[redacted-email]")
+    .replace(/\buser_[A-Za-z0-9_-]+\b/gi, "[redacted-user-id]")
+    .replace(/\b((?:password|secret|token|authorization)\s*[:=])\s*[^\s,;]+/gi, "$1 [redacted]")
+    .replace(/\b(?:detail|query|parameters?)\s*[:=]\s*[\s\S]*$/i, "[redacted details]")
+    .replace(/"[^"]*"|'[^']*'|`[^`]*`/g, "[redacted]")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 500);
+
+  return {
+    errorName: rawName.slice(0, 100),
+    ...(rawCode && /^[A-Z0-9_]{1,32}$/i.test(rawCode)
+      ? { errorCode: rawCode }
+      : {}),
+    message,
+  };
+}
+
 export async function POST(req: Request) {
   const secret = process.env.CLERK_WEBHOOK_SECRET;
 
@@ -206,6 +233,11 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ received: true });
   } catch (error) {
+    console.error("Clerk webhook user sync failed", {
+      eventType: verifiedEvent.type,
+      ...getSafeErrorDetails(error),
+    });
+
     if (isUniqueConstraintError(error)) {
       return NextResponse.json(
         { error: "User email conflicts with an existing record" },
@@ -213,9 +245,6 @@ export async function POST(req: Request) {
       );
     }
 
-    console.error("Clerk webhook user sync failed", {
-      eventType: verifiedEvent.type,
-    });
     return NextResponse.json(
       { error: "Failed to sync user" },
       { status: 500 }
